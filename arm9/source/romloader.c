@@ -424,13 +424,15 @@ char *findpath(int argc, char **argv, const char *name){
 		strcat(ininame,name);
 		if(!access(ininame,0))return ininame;
 	}
-	ininame[0]=0;
+	// create at root on next save
+	ininame[0]='/';
+	strcpy(&ininame[0]+1,name);
 	return NULL;
 }
 
 char none[] = " ";
 
-int keystr2int(char *buf) 
+int keystr2int(char *buf)
 {
 	int i;
 	int ret = 0;
@@ -454,7 +456,7 @@ int bootext() {
 	}
 
 	memset(shortcuts_tbl, 0, sizeof(shortcuts_tbl));
-	if(findpath(7,(char*[]){"/","/_dstwoplug/","/ismartplug/","/moonshl2/extlink/","/_iMenu/_ini/","/_plugin_/",inibuf},"nesDS.ini")){
+	if(findpath(8,(char*[]){"/","/_dstwoplug/","/ismartplug/","/moonshl2/extlink/","/_iMenu/_ini/","/_plugin_/","/_nds/",inibuf},"nesDS.ini")){
 		//interrupt 1: read config
 		int iniret;
 		if((iniret=ini_getl("nesDSrev2","BASwap",0,ininame)) != 0) joyflags|=B_A_SWAP;
