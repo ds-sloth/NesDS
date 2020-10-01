@@ -110,7 +110,8 @@ void rommenu(int roms) {
 	int sel=selectedrom;
 	int loaded=0;
 
-	save_sram();
+	if (romfilename[0] != '\0')
+		save_sram();
 
 	oldinput=IPC_KEYS;
 
@@ -466,6 +467,7 @@ int bootext() {
 		if((iniret=ini_getl("nesDSrev2","PALTiming",0,ininame)) != 0) __emuflags|=PALTIMING;
 		if((iniret=ini_getl("nesDSrev2","FollowMem",0,ininame)) != 0) __emuflags|=FOLLOWMEM;
 		if((iniret=ini_getl("nesDSrev2","ScreenSwap",0,ininame)) != 0) __emuflags|=SCREENSWAP;
+		if((iniret=ini_getl("nesDSrev2","AllPixelOn",0,ininame)) != 0) __emuflags|=ALLPIXELON;
 		if((iniret=ini_getl("nesDSrev2","Render",0,ininame)) != 0)  {
 			if(iniret == 1)	__emuflags|=SPLINE;
 			else __emuflags|=SOFTRENDER;
@@ -474,6 +476,7 @@ int bootext() {
 		if((iniret=ini_getl("nesDSrev2","Screen_Scale",0,ininame)) != 0) ad_scale=iniret;
 		if((iniret=ini_getl("nesDSrev2","Screen_Offset",0,ininame)) != 0) ad_ypos=iniret;
 		if((iniret=ini_getl("nesDSrev2","AutoFire",2,ininame)) != 0) autofire_fps=iniret;
+		if((iniret=ini_getl("nesDSrev2","UseSavesDir",0,ininame)) != 0) use_saves_dir=true;
 		__af_start = ((autofire_fps >> 1) << 8) + (autofire_fps >> 1) + (autofire_fps & 1);
 
 		rescale(ad_scale, ad_ypos);
