@@ -31,7 +31,8 @@ int getinput(void);
 
 int init_rommenu(void);
 void listrom(int line,int rom,int highlight); //print rom title
-int loadrom(int rom);	//return -1 on success, or rom count (from directory change)
+int loadrom();	//return -1 on success
+int selectrom(int rom);	//return -1 on success, or rom count (from directory change)
 void stringsort(char**);
 
 void adjust_fds(char *name, char * rom)
@@ -124,7 +125,7 @@ void rommenu(int roms) {
 			case KEY_B:
 			case KEY_A:
 			case KEY_Y:
-				loaded=loadrom(sel);
+				loaded=selectrom(sel);
 				if(loaded > 0) {	//didn't load (it was a directory) loaded == 0 means that ips file is loaded.
 					sel=0;
 					roms=loaded;
@@ -153,10 +154,6 @@ void rommenu(int roms) {
 	} while(loaded>=0);
 
 	selectedrom=sel;
-
-	load_sram();
-
-	//if(autostate) loadstate(..);
 }
 
 #define ROWS 21
@@ -229,7 +226,7 @@ int getinput() {
 ******************************/
 void listrom(int line,int rom,int highlight) {
 	char *s;
-	char **files=(char**)rom_files; 
+	char **files=(char**)rom_files;
 	s=files[rom];
 	if(*s==1) {	//dir
 		menutext(line,s+1,highlight?2:0);
@@ -238,15 +235,66 @@ void listrom(int line,int rom,int highlight) {
 }
 
 /*****************************
-* name:			loadrom
+* name:         loadrom
 * function:		load a rom to memory, for NES emulation.
+* description:	called by selectrom and bootext
+*****************************/
+int loadrom() {
+	FILE *f; // rom file
+	int i; // romsize
+	char *roms; // rom data
+
+	if(strstr(romfilename, ".GZ") || strstr(romfilename, ".gz") ||
+		strstr(romfilename, ".ZIP") || strstr(romfilename, ".zip")
+	) {	// a gz file is loaded.
+		if(load_gz(romfilename)) {
+			return 1;	//fail to unzip.
+		}
+		f=fopen(tmpname,"r");
+	}
+	else {
+		f=fopen(romfilename,"r");
+	}
+
+	romfileext=strrchr(romfilename,'.')+1;
+	roms = (char *)rom_start;
+	i=fread(roms,1,ROM_MAX_SIZE,f);	//read the whole thing (filesize=some huge number, don't care)
+	do_ips(i);
+
+	fclose(f);
+
+	if(strstr(romfilename, ".GZ") || strstr(romfilename, ".gz") ||
+		strstr(romfilename, ".ZIP") || strstr(romfilename, ".zip")
+		) {    // a gz file is loaded.
+		unlink(tmpname);
+	}
+	romsize=i;
+    if(i < 0x100000)
+        i = 0x100000;            //leave some room for FDS files. Also the NSF file need some extra memory
+    freemem_start=((u32)roms+i+3)&~3;
+    freemem_end=(u32)roms+ROM_MAX_SIZE;
+
+	if(!is_nsf_file(romfilename, roms)) {
+		adjust_fds(romfilename, roms);
+		romcorrect(roms);
+	}
+	initcart(roms);
+	IPC_MAPPER = debuginfo[16];
+
+	load_sram();
+	//if(autostate) loadstate(..);
+
+	return -1;	//(-1 on success)
+}
+
+/*****************************
+* name:			selectrom
+* function:		enter a subdir or select a rom.
 * argument:		rom: rom number of the roms list.
 * description:		called by rommenu.
 ******************************/
-int loadrom(int rom) {
-	int i;
-	char **files=(char**)rom_files; 
-	FILE *f;
+int selectrom(int rom) {
+	char **files=(char**)rom_files;
 
 	if(*files[rom]==1) {	//directory
 		chdir(files[rom]+1);
@@ -257,46 +305,9 @@ int loadrom(int rom) {
 			return 0;
 		}
 		else {
-			char *roms;
 			memcpy(romfilename,files[rom]+1,256);
 
-			if(strstr(files[rom]+1, ".GZ") || strstr(files[rom]+1, ".gz") ||
-				strstr(files[rom]+1, ".ZIP") || strstr(files[rom]+1, ".zip")
-			) {	// a gz file is loaded.
-				if(load_gz(files[rom]+1)) {
-					return 1;	//fail to unzip.
-				}
-				f=fopen(tmpname,"r");
-			}
-			else {
-				f=fopen(romfilename,"r");
-			}
-
-			romfileext=strrchr(romfilename,'.')+1;
-			roms = (char *)rom_start;
-			//f=fopen(romfilename,"r");
-			i=fread(roms,1,ROM_MAX_SIZE,f);	//read the whole thing (filesize=some huge number, don't care)
-			do_ips(i);
-
-			fclose(f);
-			if(strstr(files[rom]+1, ".GZ") || strstr(files[rom]+1, ".gz") ||
-				strstr(files[rom]+1, ".ZIP") || strstr(files[rom]+1, ".zip")
-				) {    // a gz file is loaded.
-				unlink(tmpname);
-			}
-			romsize=i;
-            if(i < 0x100000)
-                i = 0x100000;            //leave some room for FDS files. Also the NSF file need some extra memory
-            freemem_start=((u32)roms+i+3)&~3;
-            freemem_end=(u32)roms+ROM_MAX_SIZE;
-
-			if(!is_nsf_file(romfilename, roms)) {
-				adjust_fds(romfilename, roms);
-				romcorrect(roms);
-			}
-			initcart(roms);
-			IPC_MAPPER = debuginfo[16];
-			return -1;	//(-1 on success)
+			return loadrom();
 		}
 	}
 }
@@ -484,28 +495,12 @@ int bootext() {
 	if(!*inibuf||inibuf[strlen(inibuf)-1]!='/')strcat(inibuf,"/");
 	chdir(inibuf); //might be overwritten in readFrontend()
 
-	//interrupt 2: allocate buffer
-	char *roms=(char *)rom_start;
-
-	//interrupt 3: read frontend
+	//interrupt 2: read frontend
 	if(!readFrontend(romfilename)) return 0;
-	romfileext=strrchr(romfilename,'.')+1;
-	FILE *f=fopen(romfilename,"rb");
-	if(!f)return 0;
-	i=fread(roms,1,ROM_MAX_SIZE,f);	//read the whole thing (filesize=some huge number, don't care)
-	romsize=i;
-	if(i < 0x10000)
-		i = 0x10000;			//leave some space for FDS roms. Also the NSF
-	freemem_start=((u32)roms+i+3)&~3;
-	freemem_end=(u32)roms+ROM_MAX_SIZE;
-	fclose(f);
-	if(!is_nsf_file(romfilename, roms)) {
-		adjust_fds(romfilename, roms);
-		romcorrect(roms);
-	}
-	initcart(roms);
-	IPC_MAPPER = debuginfo[16];
-	return 1;
+
+	//interrupt 3: load rom
+	if (loadrom() == -1) return 1;
+	return 0;
 }
 
 int load_gz(const char *fname)
